@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whatsapp API for Test</title>
+    <style>
+        .client {
+            border: 1px solid #ccc;
+            padding: 20px;
+            box-sizing: border-box;
+            display: inline-block;
+            margin: 10px;
+            max-height: 500px;
+            overflow-y: scroll;
+        }
+        .hide {
+            display: none;
+        }
+    </style>
+    <link href="https://unpkg.com/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="p-4">
+		<h1>Whatsapp API</h1>
+        <div class="flex flex-row gap-2 items-center justify-center">
+            <div class="flex flex-col form-container p-4 w-1/2">
+                <div class="flex flex-col mb-2">
+                    <label for="client-id">ID</label>
+                    <input class="focus:outline-none rounded bg-gray-100 p-2 w-auto" value="085156617510" type="text" id="client-id" placeholder="Masukkan ID">
+                </div>
+                <div class="flex flex-col mb-2">
+                    <label for="client-description">Deskripsi</label>
+                    <textarea style="resize: none;" class="focus:outline-none rounded bg-gray-100 p-2" rows="3" id="client-description" placeholder="Masukkan deskripsi"></textarea>
+                </div>
+                <button class="p-2 rounded text-white bg-red-400 hover:bg-red-200 add-client-btn">Tambah Client</button>
+            </div>
+            <div class="relative w-1/2">
+                <div class="flex flex-col w-1/">
+                    <h1>Test Cron</h1>
+                    <input type="datetime-local" class="focus:outline-none rounded bg-gray-100 p-2 w-auto" id="time-jobs" />
+                    <select id="tag-value" class="focus:outline-none rounded bg-gray-100 p-2 w-auto z-8" placeholder="Select Tag">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                    </select>
+                    <button class="items-end justify-end mt-4 p-2 rounded text-white bg-red-400 hover:bg-red-200" id="test-jobs">Test Jobs</button>
+                </div>
+            </div>
+        </div>
+		<hr>
+		<div class="client-container">
+			<div class="client hide">
+				<h3 class="title"></h3>
+				<p class="description"></p>
+				<img src="" alt="QR Code" id="qrcode">
+                <input class="outline-none border-red-400" type="text" id="client-message" />
+                <input type="text" id="client-to" value="6282259090093" />
+                <button class="">Send Message</button>
+				<h3>Logs:</h3>
+				<ul class="logs"></ul>
+			</div>
+		</div>
+	</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" integrity="sha512-bLT0Qm9VnAYZDflyKcBaQ2gg0hSYNQrJ8RilYldYQ1FxQYoCLtUjuuRuZo+fjqhx/qtq/1itJ0C2ejDxltZVFg==" crossorigin="anonymous"></script>
+    <script src="/socket.io.js"></script>
+    <script>
+        $(document).ready(function(){
+            var socket = io.connect('http://localhost:3000', { path : '/socket.io'});
+            socket.emit('check-session', {id: '085156617510'})
+            function sendMessage(clientMessage, toMessage) {
+                console.log('click')
+                console.log(clientMessage, toMessage)
+                socket.emit('send-message', {clientMessage, to: toMessage})
+            }
+			$('.add-client-btn').click(function() {
+				var clientId = $('#client-id').val();
+				var clientDescription = $('#client-description').val();
+				var template = $('.client')
+                                .first()
+                                .clone()
+                                .removeClass('hide')
+                                .addClass(clientId);
+                template.find('img').addClass(`qrcode-img-${clientId}`);
+                template.find('button').addClass(`add-client-btn p-2 rounded text-white bg-red-400 hover:bg-red-200 btn-send-message-${clientId}`);
+                template.find(`button.btn-send-message-${clientId}`).click(function() {
+                    var clientMessage = template.find('input#client-message').val()
+                    var toMessage = template.find('input#client-to').val();
+                    sendMessage(clientMessage, toMessage);
+                })
+				template.find('.title').html(clientId);
+				template.find('.description').html(clientDescription);
+				$('.client-container').append(template);
+
+				socket.emit('create-session', {
+					id: clientId,
+					description: clientDescription
+				});
+			});
+
+            socket.on('init', function(data) {
+				$('.client-container .client').not(':first').remove();
+				console.log(data);
+				for (var i = 0; i < data.length; i++) {
+					var session = data[i];
+
+					var clientId = session.id;
+					var clientDescription = session.description;
+					var template = $('.client').first().clone()
+											   .removeClass('hide')
+											   .addClass(clientId);
+                    template.find('img').addClass(`qrcode-img-${clientId}`);
+                    template.find('button').addClass(`add-client-btn p-2 rounded text-white bg-red-400 hover:bg-red-200 btn-send-message-${clientId}`);
+                    template.find(`button.btn-send-message-${clientId}`).click(function() {
+                        var clientMessage = template.find('input#client-message').val()
+                        var toMessage = template.find('input#client-to').val();
+                        sendMessage(clientMessage, toMessage);
+                    })
+                    template.find('.title').html(clientId);
+                    template.find('.description').html(clientDescription);
+					$('.client-container').append(template);
+
+					if (session.ready) {
+						$(`.client.${session.id} .logs`).append($('<li>').text('Whatsapp is ready!'));
+					} else {
+						$(`.client.${session.id} .logs`).append($('<li>').text('Connecting...'));
+					}
+				}
+			});
+
+            socket.on('remove-session', function(id) {
+				$(`.client.${id}`).remove();
+			});
+
+            socket.on('message', function(data){
+                $(`.client.${data.id} .logs`).append($('<li>').text(data.text + " | "+ data.body || ''));
+            });
+
+            socket.on('qr', function(data) {
+				$(`.qrcode-img-${data.id}`).attr('src', data.src);
+				$(`.qrcode-img-${data.id}`).show();
+				console.log(data)
+			});
+
+			socket.on('ready', function(data) {
+				$(`.client.${data.id} #qrcode`).hide();
+			});
+
+			socket.on('authenticated', function(data) {
+				$(`.client.${data.id} #qrcode`).hide();
+			});
+
+            socket.on('send-message-info', function(data){
+                console.log(data)
+                $(`.client.${data.id} .logs`).append($('<li>').text(data.text || data.body || 'success'));
+            });
+
+            $('#test-jobs').click(function() {
+                const time = $('#time-jobs').val();
+                const message = "test bro sorry";
+                const to = "6282259090093";
+                const tag = $('#tag-value').val();
+                socket.emit('add-cron-jobs', {time, to, message, tag});
+            })
+        });
+    </script>
+</body>
+</html>
